@@ -8,14 +8,15 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->setupUi(this);
     cam=VideoCapture(0);
     cam2=VideoCapture(1);
-    ui->imageOut->setScaledContents(true);
-    ui->imageOut_2->setScaledContents(true);
-    ui->imageOut_3->setScaledContents(true);
-    ui->imageOut_4->setScaledContents(true);
+    ui->label->setScaledContents(true);
 
     QTimer *qTimer=new QTimer(this);
     connect(qTimer,SIGNAL(timeout()),this,SLOT(displayFrame()));
     qTimer->start(10);
+    cam>>current;
+    dragLines = Mat(current.rows, current.cols, current.type());
+    previous = Mat();
+    current = Mat();
 }
 
 MainWindow::~MainWindow()
@@ -110,43 +111,69 @@ void MainWindow::sharpen(Mat &matIn, Mat &dest) {
     }
 }
 
+inline int dist(Vec3b& a, Vec3b& b){
+    return abs(a[0]-b[0])+abs(a[1]-b[1])+abs(a[2]-b[2]);
+}
+
 void MainWindow::displayFrame(){
-    //for (int i=0;i<5;i++)
-        cam>>frameIn;
-    cvtColor(frameIn,frame,CV_BGR2RGB);
-    /*    Mat backgroundIn, background;
-        cam2>>backgroundIn;
-        cvtColor(backgroundIn, background, CV_BGR2RGB);
-
-
-    for (int row = 0; row < frame.rows; row++) {
-        for (int col = 0; col < frame.cols; col++) {
-            Vec3b pixel = frame.at<Vec3b>(row, col);
-            if (pixel[0] > 160 && pixel[1] > 160 && pixel[2] > 160) {
-                frame.at<Vec3b>(row,col)[0] = background.at<Vec3b>(row,col)[0];
-                frame.at<Vec3b>(row,col)[1] = background.at<Vec3b>(row,col)[1];
-                frame.at<Vec3b>(row,col)[2] = background.at<Vec3b>(row,col)[2];
+    // fade drag lines
+    int fadeSpeed = ui->horizontalSlider->value();
+    for (int row = 0; row < dragLines.rows; row++) {
+        Vec3b* pixel = dragLines.ptr<cv::Vec3b>(row); // point to first pixel in row
+        for (int col = 0; col < dragLines.cols; col++) {
+            if ((*pixel)[0] > 0) {
+                if ((*pixel)[0] >= fadeSpeed) {
+                    (*pixel)[0] = (*pixel)[0] - fadeSpeed;
+                    //(*pixel)[1] = (*pixel)[1] + fadeSpeed;
+                }
+                else
+                    (*pixel)[0] = 0;
             }
+            pixel++;
         }
     }
-*/
 
-    QImage orig = QImage((const unsigned char*)(frame.data),frame.cols,frame.rows,
-                         frame.step,QImage::Format_RGB888);
+    previous = current.clone();
+    cam>>frameIn;
+    cvtColor(frameIn, current, CV_BGR2RGB);
+    if (showBackground)
+        frame = current.clone();
+    else {
+        frame = Mat(current.rows,current.cols,current.type());
+        frame.setTo(Scalar(0,0,0));
+    }
 
-    ui->imageOut->setPixmap(QPixmap(QPixmap::fromImage(orig)));
+    if (previous.empty()) return;
 
-    Mat smoothed = Mat(frame.rows,frame.cols,frame.type());
-    MainWindow::smooth(frame, smoothed);
-    QImage smoothPic = QImage((const unsigned char*)(smoothed.data),smoothed.cols,smoothed.rows,
-                         smoothed.step,QImage::Format_RGB888);
+    for (int row = 0; row < current.rows; row++) {
+        Vec3b* pixel = current.ptr<cv::Vec3b>(row); // point to first pixel in row
+        Vec3b* prev = previous.ptr<cv::Vec3b>(row);
+        Vec3b* dragLinePix = dragLines.ptr<cv::Vec3b>(row);
+        Vec3b* framePix = frame.ptr<cv::Vec3b>(row);
+        for (int col = 0; col < current.cols; col++) {
+            if (dist(*pixel, *prev) > ui->horizontalSlider_2->value()) {
+                dragLinePix[0] = 255;
+            }
 
-    ui->imageOut_2->setPixmap(QPixmap(QPixmap::fromImage(smoothPic)));
+            if ((*dragLinePix)[0] > 0) {
+                (*framePix)[0] = (*dragLinePix)[0];
+                (*framePix)[1] = 0;
+                (*framePix)[2] = 0;
+            }
 
-    Mat sharpened = Mat(frame.rows,frame.cols,frame.type());
-    MainWindow::sharpen(smoothed, sharpened);
-    QImage sharpenedPic = QImage((const unsigned char*)(sharpened.data),sharpened.cols,sharpened.rows,
-                         sharpened.step,QImage::Format_RGB888);
-    ui->imageOut_3->setPixmap(QPixmap(QPixmap::fromImage(sharpenedPic)));
+            framePix++;
+            dragLinePix++;
+            pixel++;
+            prev++;
+        }
+    }
 
+
+    QImage im = QImage((const unsigned char*)(frame.data),frame.cols,frame.rows,frame.step,QImage::Format_RGB888);
+    ui->label->setPixmap(QPixmap::fromImage(im));
+}
+
+void MainWindow::on_pushButton_clicked()
+{
+    showBackground = !showBackground;
 }

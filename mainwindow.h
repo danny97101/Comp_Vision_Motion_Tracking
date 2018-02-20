@@ -28,12 +28,18 @@ private slots:
     void displayFrame();
 
 
+    void on_pushButton_clicked();
+
 private:
     Ui::MainWindow *ui;
     Mat frame;
     Mat frameIn;
+    Mat previous;
+    Mat current;
+    Mat dragLines;
     VideoCapture cam;
     VideoCapture cam2;
+    bool showBackground = true;
 };
 
 #endif // MAINWINDOW_H
